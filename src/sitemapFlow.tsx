@@ -49,7 +49,7 @@ interface StickyNoteData extends Record<string, unknown> {
 
 type StickyNoteType = Node<StickyNoteData, 'stickyNote'>;
 type CustomNodeType = Node<CustomNodeData, 'custom'>;
-type AppNode = CustomNodeType | StickyNoteType;
+export type AppNode = CustomNodeType | StickyNoteType;
 
 // --- Context Definition ---
 interface SitemapContextProps {
@@ -96,73 +96,87 @@ const NODE_BASE_PADDING = 55;
 const SITEMAP_STORAGE_KEY = 'sitemap_data';
 
 // --- ELK Layout Function (Keep as before) ---
-const getLayoutedElements = async (
-    nodes: AppNode[],
-    edges: Edge[],
-): Promise<{ nodes: AppNode[]; edges: Edge[] }> => {
-    const customNodes = nodes.filter(
-        (node) => node.type === 'custom',
-    ) as CustomNodeType[];
-    const stickyNodes = nodes.filter(
-        (node) => node.type === 'stickyNote',
-    ) as StickyNoteType[];
 
-    if (customNodes.length === 0) {
-        return { nodes, edges };
-    }
-
-    const calculateNodeHeight = (node: CustomNodeType): number => {
-        const sectionsHeight =
-            (node.data.sections?.length || 0) * SECTION_HEIGHT;
-        return NODE_HEADER_HEIGHT + sectionsHeight + NODE_BASE_PADDING;
-    };
-
-    const elkGraph = {
-        id: 'root',
-        layoutOptions: {
-            'elk.algorithm': 'mrtree',
-            'elk.direction': 'DOWN',
-            'elk.spacing.nodeNodeBetweenLayers': '180',
-            'elk.spacing.nodeNode': '80',
-            'elk.padding': '[top=50,left=50,bottom=50,right=50]',
+ 
+const getLayoutedElements = async (nodes: AppNode[], edges: Edge[]): Promise<{ nodes: AppNode[]; edges: Edge[] }> => {
+  const topmostNodes = nodes.filter((node) => !edges.some((edge) => edge.target === node.id));
+  const topmostYPositions: { [key: string]: number } = {};
+  topmostNodes.forEach((node) => {
+    topmostYPositions[node.id] = node.position.y;
+  });
+ 
+  const elkGraph = {
+    id: 'root',
+    properties: {
+      'elk.algorithm': 'mrtree',
+      'elk.direction': 'DOWN',
+      'elk.spacing.nodeNodeBetweenLayers': 200,
+      'elk.spacing.nodeNode': 200,
+      'elk.alignment': 'CENTER',
+      'elk.padding': '[top=100,left=50,bottom=50,right=50]',
+    },
+    children: nodes.map((node) => ({
+      id: node.id,
+      width: NODE_WIDTH,
+      height: NODE_HEADER_HEIGHT + ('sections' in node.data && Array.isArray((node.data as CustomNodeData).sections) && (node.data as CustomNodeData).sections.length > 0 ? (node.data as CustomNodeData).sections.length * SECTION_HEIGHT : SECTION_HEIGHT),
+    })),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      sources: [edge.source],
+      targets: [edge.target],
+    })),
+  };
+ 
+  try {
+    const result = await elk.layout(elkGraph);
+    let layoutedNodes = nodes.map((node) => {
+      const elkNode = result.children?.find((n: any) => n.id === node.id);
+      if (!elkNode) {
+        console.error(`Node ${node.id} not found in ELK layout`);
+        return node;
+      }
+      const yPosition = topmostYPositions[node.id] !== undefined ? topmostYPositions[node.id] : elkNode.y!;
+      return {
+        ...node,
+        position: {
+          x: elkNode.x! - NODE_WIDTH / 2,
+          y: yPosition,
         },
-        children: customNodes.map((node) => ({
-            id: node.id,
-            width: NODE_WIDTH,
-            height: calculateNodeHeight(node),
-        })),
-        edges: edges.map((edge) => ({
-            id: edge.id,
-            sources: [edge.source],
-            targets: [edge.target],
-        })),
-    };
-
-    try {
-        const layoutedGraph = await elk.layout(elkGraph);
-        const layoutedCustomNodes = customNodes.map((node) => {
-            const elkNode = layoutedGraph.children?.find((n) => n.id === node.id);
-            if (!elkNode || elkNode.x === undefined || elkNode.y === undefined) {
-                console.warn(
-                    `Node ${node.id} not found or missing coords in ELK result.`,
-                );
-                return { ...node, position: node.position || { x: 0, y: 0 } };
-            }
-            return {
-                ...node,
-                position: { x: elkNode.x, y: elkNode.y },
-                width: elkNode.width,
-                height: elkNode.height,
-            };
+      };
+    });
+ 
+    const nodesByParent: { [key: string]: AppNode[] } = {};
+    edges.forEach((edge) => {
+      const parentId = edge.source;
+      const child = layoutedNodes.find((node) => node.id === edge.target);
+      if (child) {
+        if (!nodesByParent[parentId]) {
+          nodesByParent[parentId] = [];
+        }
+        nodesByParent[parentId].push(child);
+      }
+    });
+ 
+    Object.keys(nodesByParent).forEach((parentId) => {
+      const siblings = nodesByParent[parentId];
+      if (siblings.length > 1) {
+        const minY = Math.min(...siblings.map((sibling) => sibling.position.y));
+        siblings.forEach((sibling) => {
+          sibling.position.y = minY;
         });
-        const finalNodes = [...layoutedCustomNodes, ...stickyNodes];
-        return { nodes: finalNodes, edges };
-    } catch (error) {
-        console.error('ELK layout error:', error);
-        throw error;
-    }
+      }
+    });
+ 
+    return {
+      nodes: layoutedNodes,
+      edges,
+    };
+  } catch (error) {
+    console.error('ELK layout error:', error);
+    throw error;
+  }
 };
-
+ 
 
 // --- LocalStorage (Keep as before, ensure functions are NOT saved) ---
 const loadInitialState = () => {
@@ -267,7 +281,7 @@ function SitemapFlow() {
         .finally(() => { if (isMounted) { setIsLayouting(false); }});
       return () => { isMounted = false; };
     }
-  }, [layoutTrigger, nodes, edges, setNodes, setEdges]); // Keep nodes/edges here - if ELK modifies them, we need to re-run potentially, but handle layouting flag carefully if needed
+  }, [layoutTrigger, nodes, edges, setNodes, setEdges]);
 
 
   const getNextPageNumber = useCallback(() => {
@@ -418,7 +432,6 @@ function SitemapFlow() {
         },
       };
 
-      // Define spacing constants (adjust these as needed or import from your codebase)
       const HORIZONTAL_SPACING = 250; // Horizontal gap between child nodes
       const VERTICAL_SPACING = 150;  // Vertical gap between root and children
       const NODE_WIDTH = 250;        // Width of each node (assumed from CustomNode)
@@ -439,10 +452,10 @@ function SitemapFlow() {
           id: newNodeId,
           type: 'custom',
           data: {
-            label: page.Pagename,
+            label: page.pageName,
             sections: page.sections.map((section: any, secIndex: any) => ({
               id: `${newNodeId}-section-${secIndex}`,
-              title: section.section_name,
+              title: section.sectionName,
               description: section.section_description,
             })),
           
@@ -562,8 +575,7 @@ function SitemapFlow() {
                     nodeTypes={nodeTypes}
                     onInit={(instance) => {
                         reactFlowInstanceRef.current = instance;
-                        // Use setTimeout to delay initial layout slightly after mount
-                        // setTimeout(triggerLayout, 100); // Delay 100ms
+                        setTimeout(triggerLayout, 50);
                     }}
                     snapToGrid snapGrid={[10, 10]}
                     className="h-full"
