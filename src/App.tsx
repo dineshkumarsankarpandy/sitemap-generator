@@ -9,8 +9,7 @@ function App() {
 
   return (
     <Router>
-    <div className="flex-1">
-    <ReactFlowProvider>
+    <div className="w-full">
       <Routes>
         <Route path="/" element={<SitemapFlow />} />
         <Route path="/sitemap" element={<SitemapFlow />} />
@@ -18,7 +17,7 @@ function App() {
         {/* <Route path="/website-preview" element={<WebsitePreivewImg />} /> */}
         <Route path="*" element={<div>Not Found</div>} />
       </Routes>
-    </ReactFlowProvider>
+    
   </div>
   </Router>
   )

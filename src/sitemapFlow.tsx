@@ -1,28 +1,27 @@
-import { useState, useCallback, useRef, useEffect, createContext, useContext, useMemo } from 'react'; 
+import { useState, useCallback, useRef, useEffect,useContext,createContext } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   MiniMap,
   Controls,
+  Background,
   useNodesState,
   useEdgesState,
   Node,
   Edge,
-  // Connection,
   NodeTypes,
   ReactFlowInstance,
   BackgroundVariant,
-  Background,
-  ReactFlowProvider, // Keep ReactFlowProvider for useReactFlow hook
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import * as htmlToImage from 'html-to-image';
+
 import ELK from 'elkjs/lib/elk.bundled.js';
 import CustomNode from './customNode';
-import StickyNoteNode from './stickyNote';
-import { Sidebar } from './sidebar';
-import { PrimaryNavbar } from './sitemapBar';
-// import { PageDialog } from './primarSetupForm';
-import { PrimarySetupForm } from './primarSetupForm';
+
+import '@xyflow/react/dist/style.css';
+
+
+const elk = new ELK();
+
 
 // --- Interfaces ---
 interface Section {
@@ -30,95 +29,74 @@ interface Section {
   title: string;
   description: string;
 }
-
-// --- REMOVE functions from NodeData ---
 interface CustomNodeData extends Record<string, unknown> {
   label: string;
   sections: Section[];
   onHeaderClick?: (nodeId: string, label: string) => void; // Still okay if needed for dialogs
-  level: number;
-  // REMOVED: getNextPageNumber
-  // REMOVED: triggerLayout
+  // level: number;
 }
 
-interface StickyNoteData extends Record<string, unknown> {
-  label: string;
-  content?: string;
-  color?: string;
-}
-
-type StickyNoteType = Node<StickyNoteData, 'stickyNote'>;
 type CustomNodeType = Node<CustomNodeData, 'custom'>;
-export type AppNode = CustomNodeType | StickyNoteType;
 
 // --- Context Definition ---
 interface SitemapContextProps {
   getNextPageNumber: () => number;
-  triggerLayout: () => void;
   setPageCount: (count: number) => void;
-  // Add other shared functions/state if needed
 }
+
 
 // Create the context with a default undefined value
 const SitemapContext = createContext<SitemapContextProps | undefined>(undefined);
 
+
 // Custom hook to use the Sitemap context
 export const useSitemapFunctions = (): SitemapContextProps => {
   const context = useContext(SitemapContext);
-  if (context === undefined) {
-    throw new Error('useSitemapFunctions must be used within a SitemapProvider');
-  }
+  if (!context) throw new Error('useSitemapFunctions must be used inside SitemapContext');
   return context;
 };
-// --- End Context Definition ---
-
 
 // --- Constants ---
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
-  stickyNote: StickyNoteNode,
 };
 
-const initialNodes: AppNode[] = [
+const NODE_WIDTH = 258;
+const NODE_HEADER_HEIGHT = 500;
+const SECTION_HEIGHT = 30;
+const SITEMAP_STORAGE_KEY = 'sitemap_data';
+
+const initialNodes: Node[] = [
   {
     id: 'root',
     type: 'custom',
-    data: { label: 'Home', sections: [], level: 0 }, // No functions needed here
+    data: { label: 'Home', sections: [], level: 0 },
     position: { x: 0, y: 0 },
   },
 ];
+
 const initialEdges: Edge[] = [];
-const elk = new ELK();
-const NODE_WIDTH = 258;
-const NODE_HEADER_HEIGHT = 40;
-const SECTION_HEIGHT = 30;
-const NODE_BASE_PADDING = 55;
-const SITEMAP_STORAGE_KEY = 'sitemap_data';
+
 
 // --- ELK Layout Function (Keep as before) ---
-
- 
-const getLayoutedElements = async (nodes: AppNode[], edges: Edge[]): Promise<{ nodes: AppNode[]; edges: Edge[] }> => {
-  const topmostNodes = nodes.filter((node) => !edges.some((edge) => edge.target === node.id));
-  const topmostYPositions: { [key: string]: number } = {};
-  topmostNodes.forEach((node) => {
-    topmostYPositions[node.id] = node.position.y;
-  });
- 
-  const elkGraph = {
+const getLayoutedElements = async (
+  nodes: Node[],
+  edges: Edge[]
+): Promise<{ nodes: Node[]; edges: Edge[] }> => {
+  const graph = {
     id: 'root',
-    properties: {
+    layoutOptions: {
       'elk.algorithm': 'mrtree',
       'elk.direction': 'DOWN',
-      'elk.spacing.nodeNodeBetweenLayers': 200,
-      'elk.spacing.nodeNode': 200,
+      'elk.spacing.nodeNodeBetweenLayers': '100',
+      'elk.spacing.nodeNode': '70',
+      'elk.padding': '[top=40,left=40,bottom=40,right=40]',
       'elk.alignment': 'CENTER',
-      'elk.padding': '[top=100,left=50,bottom=50,right=50]',
     },
     children: nodes.map((node) => ({
       id: node.id,
-      width: NODE_WIDTH,
-      height: NODE_HEADER_HEIGHT + ('sections' in node.data && Array.isArray((node.data as CustomNodeData).sections) && (node.data as CustomNodeData).sections.length > 0 ? (node.data as CustomNodeData).sections.length * SECTION_HEIGHT : SECTION_HEIGHT),
+      width: 260,
+      height: 400 + ((Array.isArray((node.data as any).sections) ? (node.data as any).sections.length : 1) * 30),
     })),
     edges: edges.map((edge) => ({
       id: edge.id,
@@ -126,56 +104,23 @@ const getLayoutedElements = async (nodes: AppNode[], edges: Edge[]): Promise<{ n
       targets: [edge.target],
     })),
   };
- 
-  try {
-    const result = await elk.layout(elkGraph);
-    let layoutedNodes = nodes.map((node) => {
-      const elkNode = result.children?.find((n: any) => n.id === node.id);
-      if (!elkNode) {
-        console.error(`Node ${node.id} not found in ELK layout`);
-        return node;
-      }
-      const yPosition = topmostYPositions[node.id] !== undefined ? topmostYPositions[node.id] : elkNode.y!;
-      return {
-        ...node,
-        position: {
-          x: elkNode.x! - NODE_WIDTH / 2,
-          y: yPosition,
-        },
-      };
-    });
- 
-    const nodesByParent: { [key: string]: AppNode[] } = {};
-    edges.forEach((edge) => {
-      const parentId = edge.source;
-      const child = layoutedNodes.find((node) => node.id === edge.target);
-      if (child) {
-        if (!nodesByParent[parentId]) {
-          nodesByParent[parentId] = [];
-        }
-        nodesByParent[parentId].push(child);
-      }
-    });
- 
-    Object.keys(nodesByParent).forEach((parentId) => {
-      const siblings = nodesByParent[parentId];
-      if (siblings.length > 1) {
-        const minY = Math.min(...siblings.map((sibling) => sibling.position.y));
-        siblings.forEach((sibling) => {
-          sibling.position.y = minY;
-        });
-      }
-    });
- 
+
+  const layoutedGraph = await elk.layout(graph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const layoutNode = layoutedGraph.children?.find((n) => n.id === node.id);
     return {
-      nodes: layoutedNodes,
-      edges,
+      ...node,
+      position: {
+        x: (layoutNode?.x ?? 0),
+        y: (layoutNode?.y ?? 0),
+      },
     };
-  } catch (error) {
-    console.error('ELK layout error:', error);
-    throw error;
-  }
+  });
+
+  return { nodes: layoutedNodes, edges };
 };
+
  
 
 // --- LocalStorage (Keep as before, ensure functions are NOT saved) ---
@@ -203,14 +148,14 @@ const loadInitialState = () => {
 function SitemapFlow() {
   const loadedState = useRef(loadInitialState());
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>(loadedState.current.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(loadedState.current.edges);
-  const [pageCount, setPageCount] = useState<number>(0);
-  // const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [pageCount, setPageCount] = useState(1);
+  // const [layoutTrigger, setLayoutTrigger] = useState(0);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const reactFlowInstanceRef = useRef<ReactFlowInstance<AppNode, Edge> | null>(null);
-  const [layoutTrigger, setLayoutTrigger] = useState(0);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [isLayouting, setIsLayouting] = useState(false);
   const [primarySetupOpen, setPrimarySetupOpen] = useState<boolean>(false);
@@ -222,10 +167,95 @@ function SitemapFlow() {
 
 
   // --- Layout Trigger ---
-  const triggerLayout = useCallback(() => {
-    setError(null);
-    setLayoutTrigger((prev) => prev + 1);
-  }, []); 
+  //  const triggerLayout = useCallback(() => {
+  //   setLayoutTrigger((prev) => prev + 1);
+  // }, []);
+
+  // useEffect(() => {
+  //   if (layoutTrigger === 0) return;
+
+  //   let mounted = true;
+
+  //   getLayoutedElements(nodes, edges).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+  //     if (mounted) {
+  //       setNodes(layoutedNodes);
+  //       reactFlowInstanceRef.current?.fitView({ padding: 0.3, duration: 500 });
+  //       setEdges(layoutedEdges);
+  //     }
+  //   });
+
+  //   return () => {
+  //     mounted = false;
+  //   };
+  // }, [layoutTrigger]);
+
+  useEffect(() => {
+    const layoutAndUpdate = async () => {
+      try {
+        const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElements(nodes, edges);
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
+        reactFlowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 });
+      } catch (error) {
+        console.error('Layout failed:', error);
+      }
+    };
+  
+    layoutAndUpdate();
+  }, [nodes.length, edges.length]);
+
+  const getNextPageNumber = () => {
+    const next = pageCount + 1;
+    setPageCount(next);
+    return next;
+  };
+
+  const addNode = (position = 'end', referenceNodeId = 'root') => {
+    
+    const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    
+    const newNode: Node = {
+      id: newId,
+      type: 'custom',
+      data: {
+        label: `Page ${getNextPageNumber()}`,
+        sections: [],
+        level: 1,
+      },
+      position: { x: 0, y: 0 },
+    };
+
+    const newEdge: Edge = {
+      id: `e-${referenceNodeId}-${newId}`,
+      source: referenceNodeId,
+      target: newId,
+      type: 'smoothstep',
+    };
+
+    setNodes((nds) => {
+      const updated = [...nds, newNode];
+      console.log('Updated node list:', updated);
+      return updated;
+    }
+  );
+    console.log('Creating new node', newNode);
+    console.log('New node added:', newNode);
+
+    setEdges((eds) => {
+      if (position === 'end' || position === 'child' || !referenceNodeId) {
+        return [...eds, newEdge];
+      } else {
+        const index = eds.findIndex((e) => e.target === referenceNodeId);
+        if (position === 'before') {
+          return [...eds.slice(0, index), newEdge, ...eds.slice(index)];
+        } else {
+          return [...eds.slice(0, index + 1), newEdge, ...eds.slice(index + 1)];
+        }
+      }
+    });
+
+    // triggerLayout();
+  };
 
   // --- LocalStorage Saving Effect (Keep as before) ---
   useEffect(() => {
@@ -261,37 +291,6 @@ function SitemapFlow() {
     }
   }, [nodes, edges, pageCount]);
 
-
-  // --- ELK Layout Effect (Keep as before) ---
-  useEffect(() => {
-    if (nodes.some(n => n.type === 'custom') && layoutTrigger > 0) {
-      let isMounted = true;
-      setIsLayouting(true);
-      setError(null);
-      // console.log("Running ELK layout...");
-      getLayoutedElements(nodes, edges)
-        .then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          if (isMounted) {
-            // console.log("Applying layouted nodes:", layoutedNodes.length);
-            setNodes(layoutedNodes);
-            setEdges(layoutedEdges);
-          }
-        })
-        .catch((err) => { if (isMounted) { console.error('Layout effect error:', err); setError(`Layout failed: ${err.message || 'Unknown ELK error'}`); }})
-        .finally(() => { if (isMounted) { setIsLayouting(false); }});
-      return () => { isMounted = false; };
-    }
-  }, [layoutTrigger, nodes, edges, setNodes, setEdges]);
-
-
-  const getNextPageNumber = useCallback(() => {
-    const nextPage = pageCount + 1;
-    setPageCount(nextPage);
-    return nextPage;
-  }, [pageCount]);
-
- 
-
   // --- Other Actions (Keep as before) ---
    const handleDeleteSitemap = useCallback(() => {
         if (
@@ -307,69 +306,6 @@ function SitemapFlow() {
         }
     }, [setNodes, setEdges, setPageCount]);
 
-    const downloadImage = useCallback(() => {
-        if (reactFlowWrapper.current) {
-            const flowElement = reactFlowWrapper.current.querySelector(
-                '.react-flow',
-            ) as HTMLElement;
-            if (!flowElement) {
-                setError('Cannot export image - flow element not found.');
-                return;
-            }
-            setError(null);
-            htmlToImage
-                .toPng(flowElement, {
-                    backgroundColor: '#f9fafb',
-                    pixelRatio: 1.5,
-                    filter: (element) =>
-                        !(
-                            element.classList?.contains('react-flow__controls') ||
-                            element.classList?.contains('react-flow__minimap') ||
-                            element.classList?.contains('react-flow__attribution')
-                        ),
-                })
-                .then((dataUrl) => {
-                    const link = document.createElement('a');
-                    link.download = 'sitemap.png';
-                    link.href = dataUrl;
-                    link.click();
-                    link.remove();
-                })
-                .catch((error) => {
-                    console.error('Error downloading image:', error);
-                    setError('Failed to export image.');
-                });
-        } else {
-            setError('Cannot export image - component not ready.');
-        }
-    }, []);
-
-    const addStickyNote = useCallback(() => {
-        if (!reactFlowInstanceRef.current || !reactFlowWrapper.current) {
-             console.warn("Cannot add sticky note: React Flow instance/wrapper not ready.");
-             return;
-        }
-        const newNodeId = `sticky-${Date.now()}`;
-        const position = reactFlowInstanceRef.current.screenToFlowPosition({
-            x: reactFlowWrapper.current.clientWidth / 2,
-            y: reactFlowWrapper.current.clientHeight / 2,
-        });
-        const newNode: StickyNoteType = {
-            id: newNodeId, type: 'stickyNote',
-            data: { label: 'New Note', content: '', color: '#FFFF99' },
-            position: position, draggable: true,
-        };
-        setNodes((nds) => [...nds, newNode]);
-    }, [setNodes]);
-
-
-  const sitemapContextValue = useMemo(() => ({
-    getNextPageNumber,
-    triggerLayout,
-    setPageCount
-  }), [getNextPageNumber, triggerLayout,setPageCount]);
-
-
   const handleOpenDialog = useCallback(() => {
     setPrimarySetupOpen(true);
   }, []);
@@ -382,7 +318,6 @@ function SitemapFlow() {
     },
     []
   );
-
 
   const handleSitemapGenerated = useCallback(
     (data: any) => {
@@ -418,7 +353,7 @@ function SitemapFlow() {
       }
 
       // Update root node with homepage details
-      const updatedRoot: Node<AppNode['data'], string> = {
+      const updatedRoot: Node<CustomNodeType['data'], string> = {
         ...currentRoot,
         data: {
           ...currentRoot.data,
@@ -442,7 +377,7 @@ function SitemapFlow() {
       const startX = updatedRoot.position.x - totalWidth / 2;
 
       // Create child nodes for remaining pages
-      const newNodes: Node<AppNode['data']>[] = childPages.map((page: any, index: any) => {
+      const newNodes: Node<CustomNodeType['data']>[] = childPages.map((page: any, index: any) => {
         const newNodeId = `node-${Date.now()}-${index}`;
         const newPosition = {
           x: startX + index * HORIZONTAL_SPACING,
@@ -482,132 +417,31 @@ function SitemapFlow() {
     [nodes, setNodes, setEdges, getNextPageNumber]
   );
 
-
-
-  // const handleRegenerate = useCallback(
-  //   (pageName: string, pagePrompt: string) => {
-  //     if (dialogNodeId && pageName.trim()) {
-  //       setNodes((nds) =>
-  //         nds.map((node) => {
-  //           if (node.id === dialogNodeId && node.type === 'custom') {
-  //             return {
-  //               ...node,
-  //               data: {
-  //                 ...(node.data as CustomNodeData),
-  //                 label: pageName,
-  //                 sections: pagePrompt
-  //                   ? [{ id: Date.now(), title: pagePrompt, description: '' }]
-  //                   : (node.data as CustomNodeData).sections,
-  //               },
-  //             };
-  //           }
-  //           return node;
-  //         })
-  //       );
-  //       setDialogNodeId(null);
-  //     }
-  //   },
-  //   [dialogNodeId, setNodes]
-  // );
-
-
-  // const handleUpdateLabel = useCallback(
-  //   (nodeId: string, newLabel: string) => {
-  //     if (newLabel.trim()) {
-  //       setNodes((nds) =>
-  //         nds.map((node) => {
-  //           if (node.id === nodeId) {
-  //             return {
-  //               ...node,
-  //               data: {
-  //                 ...(node.data as CustomNodeData),
-  //                 label: newLabel,
-  //               },
-  //             };
-  //           }
-  //           return node;
-  //         })
-  //       );
-  //     }
-  //   },
-  //   [setNodes]
-  // );
-
-
-
-
-  // --- Render ---
   return (
     <>
-      <PrimaryNavbar
-          title="Primary Sitemap"
-          onDelete={showSitemap ? handleDeleteSitemap : undefined}
-          onSetupOpen={handleOpenDialog}
-        />
-
-    <SitemapContext.Provider value={sitemapContextValue}>
-      <ReactFlowProvider> {/* Keep for useReactFlow hook */}
-        <div className="flex w-full h-screen bg-gray-100">
-          <Sidebar
-              onOpenDialog={handleOpenDialog}
-              onDownloadImage={downloadImage}
-              onStickyNode={addStickyNote}
-              // onDeleteSitemap={handleDeleteSitemap}
-          />
-
-      
-          <div ref={reactFlowWrapper} className="flex-1 h-full relative">
-              {/* Error Message UI */}
-              {error && (
-                  <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded z-10 shadow-md">
-                      <span className="font-medium">Error:</span> {error}
-                      <button onClick={() => setError(null)} className="absolute top-0 bottom-0 right-0 px-3 py-1 text-red-500 hover:text-red-700">×</button>
-                  </div>
-              )}
-              {/* Layouting Indicator UI */}
-              {isLayouting && ( <div className="absolute top-2 left-10 bg-blue-100 text-blue-700 px-3 py-1 rounded z-10 text-sm"> Applying layout... </div> )}
-
-              {/* ReactFlow or Placeholder */}
-              {nodes.length > 0 ? (
-                <ReactFlow
-                    nodes={nodes} edges={edges}
-                    onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-                    nodeTypes={nodeTypes}
-                    onInit={(instance) => {
-                        reactFlowInstanceRef.current = instance;
-                        setTimeout(triggerLayout, 50);
-                    }}
-                    snapToGrid snapGrid={[10, 10]}
-                    className="h-full"
-                    fitView fitViewOptions={{ padding: 0.2, duration: 500 }}
-                >
-                    <Background variant={BackgroundVariant.Dots} gap={15} size={1} />
-                    <MiniMap pannable zoomable nodeStrokeWidth={3} nodeColor={(n) => n.type === 'stickyNote' ? ((n.data as StickyNoteData).color || '#FFFF99') : '#0891b2'}/>
-                    <Controls />
-                </ReactFlow>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500"> Sitemap is empty. </div>
-              )}
-          </div>
+     {/* <SitemapContext.Provider value={{ getNextPageNumber, triggerLayout, setPageCount }}>
+    
+    </SitemapContext.Provider> */}
+    <SitemapContext.Provider value={{ getNextPageNumber, setPageCount }}>
+      <ReactFlowProvider>
+        <div ref={reactFlowWrapper} className="w-full h-screen">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            nodesDraggable={false} // ⛔ Disable node dragging
+            onInit={(instance) => (reactFlowInstanceRef.current = instance)}
+            fitView
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            <MiniMap />
+            <Controls />
+          </ReactFlow>
         </div>
       </ReactFlowProvider>
-    </SitemapContext.Provider>
-    
-    {/* <PageDialog
-        open={!!dialogNodeId}
-        onOpenChange={(open) => setDialogNodeId(open ? dialogNodeId : null)}
-        onRegenerate={handleRegenerate}
-        nodeId={dialogNodeId || ''}
-        onUpdateLabel={handleUpdateLabel}
-      /> */}
-
-<PrimarySetupForm
-        open={primarySetupOpen}
-        onOpenChange={setPrimarySetupOpen}
-        onRegenerate={handlePrimarySetupRegenerate}
-        nodeId="root"
-        onSitemapGenerated={handleSitemapGenerated}
-      />
+      </SitemapContext.Provider>
     </>
   );
 }

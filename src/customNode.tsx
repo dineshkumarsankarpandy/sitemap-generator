@@ -1,8 +1,8 @@
 import { useCallback, useState, useEffect, useRef, memo, useMemo } from 'react';
 import { Handle, Position, useReactFlow, Node, Edge, NodeProps } from '@xyflow/react';
 import { useSitemapFunctions } from './sitemapFlow';
-import type { AppNode } from './sitemapFlow';
-
+// import type  AppNode  from './sitemapFlow';
+type AppNode = Node<any>;
 interface Section {
   id: number | string;
   title: string;
@@ -21,7 +21,7 @@ type CustomNodeType = Node<CustomNodeData, 'custom'>;
 function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) {
   // --- Hooks ---
   const { setNodes, setEdges, getEdges, deleteElements, getNodes } = useReactFlow<AppNode, Edge>();
-  const { getNextPageNumber, triggerLayout, setPageCount } = useSitemapFunctions();
+  const { getNextPageNumber,setPageCount } = useSitemapFunctions();
 
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -45,53 +45,82 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
   const canAddChild = true; // Allow adding children generally
 
   // --- Node Actions ---
-  const addChildNode = useCallback((): void => {
-    const newNodeId = `node-${Date.now()}-${Math.random().toString(16).substring(2, 8)}`;
-    const pageNo = getNextPageNumber();
+  const addChildNode = useCallback(() => {
+    const newNodeId = `node-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newPageLabel = `Page ${getNextPageNumber()}`;
+  
     const newNode: CustomNodeType = {
-      id: newNodeId, type: 'custom', position: { x: 0, y: 0 },
-      data: { label: `Page ${pageNo}`, sections: [], level: (data.level ?? 0) + 1 },
+      id: newNodeId,
+      type: 'custom',
+      data: {
+        label: newPageLabel,
+        sections: [],
+        level: (data.level ?? 0) + 1,
+      },
+      position: { x: 0, y: 0 }, // layout will update this
     };
-    const newEdge: Edge = { id: `edge-${id}-${newNodeId}`, source: id, target: newNodeId, type: 'smoothstep' };
+  
+    const newEdge: Edge = {
+      id: `edge-${id}-${newNodeId}`,
+      source: id,
+      target: newNodeId,
+      type: 'smoothstep',
+    };
+  
     setNodes((nds) => [...nds, newNode]);
     setEdges((eds) => [...eds, newEdge]);
-    triggerLayout();
-    setShowMenu(false);
-  }, [id, data.level, setNodes, setEdges, getNextPageNumber, triggerLayout]);
-
+  }, [id, data.level, setNodes, setEdges, getNextPageNumber]);
+  
   const addSiblingNode = useCallback(
     (positionType: 'before' | 'after' | 'end') => {
-      const parentEdge = findParentEdge();
-      if (!parentEdge) { console.warn("Cannot add sibling: Node is root or orphaned.", { id }); return; }
+      const parentEdge = getEdges().find((edge) => edge.target === id);
+      if (!parentEdge) return; // Root node has no parent
+  
       const parentId = parentEdge.source;
-      const newNodeId = `node-${Date.now()}-${Math.random().toString(16).substring(2, 8)}`;
-      const pageNo = getNextPageNumber();
+      const newNodeId = `node-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const newLabel = `Page ${getNextPageNumber()}`;
+  
       const newNode: CustomNodeType = {
-        id: newNodeId, type: 'custom', position: { x: 0, y: 0 },
-        data: { label: `Page ${pageNo}`, sections: [], level: data.level },
+        id: newNodeId,
+        type: 'custom',
+        data: {
+          label: newLabel,
+          sections: [],
+          level: data.level, // same level as current
+        },
+        position: { x: 0, y: 0 },
       };
-      const newEdge: Edge = { id: `edge-${parentId}-${newNodeId}`, source: parentId, target: newNodeId, type: 'smoothstep' };
-      setEdges((eds) => {
-        const siblingEdges = eds.filter(edge => edge.source === parentId);
-        const otherEdges = eds.filter(edge => edge.source !== parentId);
-        let newSiblingEdges: Edge[];
-        if (positionType === 'end') { newSiblingEdges = [...siblingEdges, newEdge]; }
-        else {
-          const currentEdgeIndex = siblingEdges.findIndex(edge => edge.target === id);
-          if (currentEdgeIndex === -1) { console.warn("addSiblingNode: Current sibling edge not found. Adding to end."); newSiblingEdges = [...siblingEdges, newEdge]; }
-          else {
-            newSiblingEdges = [...siblingEdges];
-            if (positionType === 'before') { newSiblingEdges.splice(currentEdgeIndex, 0, newEdge); }
-            else { newSiblingEdges.splice(currentEdgeIndex + 1, 0, newEdge); }
-          }
-        }
-        return [...otherEdges, ...newSiblingEdges];
-      });
+  
+      const newEdge: Edge = {
+        id: `edge-${parentId}-${newNodeId}`,
+        source: parentId,
+        target: newNodeId,
+        type: 'smoothstep',
+      };
+  
       setNodes((nds) => [...nds, newNode]);
-      triggerLayout();
-      setShowMenu(false);
-    }, [id, data.level, setNodes, setEdges, findParentEdge, getNextPageNumber, triggerLayout]
+  
+      setEdges((eds) => {
+        const siblings = eds.filter((e) => e.source === parentId);
+        const others = eds.filter((e) => e.source !== parentId);
+  
+        if (positionType === 'end') {
+          return [...others, ...siblings, newEdge];
+        }
+  
+        const currentIndex = siblings.findIndex((e) => e.target === id);
+        if (currentIndex === -1) return [...others, ...siblings, newEdge];
+  
+        const insertIndex = positionType === 'before' ? currentIndex : currentIndex + 1;
+        const newSiblingEdges = [...siblings];
+        newSiblingEdges.splice(insertIndex, 0, newEdge);
+  
+        return [...others, ...newSiblingEdges];
+      });
+    },
+    [id, data.level, setNodes, setEdges, getNextPageNumber, getEdges]
   );
+  
 
   const findAllDescendantIds = useCallback((nodeId: string, allEdges: Edge[]): string[] => {
     const childrenEdges = allEdges.filter(edge => edge.source === nodeId);
@@ -115,8 +144,8 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
       deleteElements({ nodes: allNodeIdsToDelete.map(nid => ({ id: nid })), edges: allEdgeIdsToDelete.map(eid => ({ id: eid })) });
     }
     setShowMenu(false);
-    triggerLayout();
-  }, [id, getCurrentEdges, deleteElements, triggerLayout, findAllDescendantIds, setPageCount, getNodes, getEdges]);
+    // triggerLayout();
+  }, [id, getCurrentEdges, deleteElements, findAllDescendantIds, setPageCount, getNodes, getEdges]);
 
   const addSection = useCallback(() => {
     const newSection: Section = {
@@ -140,8 +169,8 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
         return node;
       })
     );
-    triggerLayout();
-  }, [id, setNodes, triggerLayout]);
+    // triggerLayout();
+  }, [id, setNodes]);
 
   const deleteSection = useCallback((sectionIdToDelete: string | number) => {
      setNodes((nds) =>
@@ -159,8 +188,8 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
             return node;
         })
      );
-     triggerLayout();
-  }, [id, setNodes, triggerLayout]);
+    //  triggerLayout();
+  }, [id, setNodes]);
 
   const handleSectionClick = useCallback((sectionId: string | number, field: 'title' | 'description', currentValue: string) => {
     setEditingSectionId(sectionId);
@@ -205,9 +234,9 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
     setEditSectionTitle('');
     setEditSectionDescription('');
 
-    triggerLayout();
+    // triggerLayout();
 
-  }, [editingSectionId, editingField, editSectionTitle, editSectionDescription, id, setNodes, triggerLayout]);
+  }, [editingSectionId, editingField, editSectionTitle, editSectionDescription, id, setNodes]);
 
   const handleSectionInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -290,8 +319,43 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
             {showMenu && (
               <div className="absolute top-full right-2 mt-1 z-20 min-w-[120px] rounded-md border border-neutral-200 bg-white shadow-lg py-1">
                 <button onClick={(e) => { e.stopPropagation(); handleHeaderClick(e); }} className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"> Rename </button>
-                <button onClick={(e) => { e.stopPropagation(); addChildNode(); }} disabled={!canAddChild} className={`block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors ${!canAddChild ? 'opacity-50 cursor-not-allowed' : ''}`}> Add Child Page </button>
-                {!isRootNode() && ( <> <button onClick={(e) => { e.stopPropagation(); addSiblingNode('before'); }} className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"> Add Page Before </button> <button onClick={(e) => { e.stopPropagation(); addSiblingNode('after'); }} className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"> Add Page After </button> </> )}
+                {/* <button onClick={(e) => { e.stopPropagation(); addChildNode(); }} disabled={!canAddChild} className={`block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors ${!canAddChild ? 'opacity-50 cursor-not-allowed' : ''}`}> Add Child Page </button> */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addChildNode();
+                    setShowMenu(false); // optionally close menu
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                >
+                  Add Child Page
+                </button>
+                  
+                {!isRootNode() && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addSiblingNode('before');
+                        setShowMenu(false);
+                      }}
+                      className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                    >
+                      Add Page Before
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addSiblingNode('after');
+                        setShowMenu(false);
+                      }}
+                      className="block w-full px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                    >
+                      Add Page After
+                    </button>
+                  </>
+                )}
+
                 <div className="my-1 h-px bg-neutral-200"></div>
                 <button onClick={(e) => { e.stopPropagation(); deleteNodeAndDescendants(); }} className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"> Delete {isRootNode() ? 'Sitemap' : 'Node'} </button>
               </div>
