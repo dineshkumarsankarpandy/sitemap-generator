@@ -12,7 +12,7 @@ const HeroSection = () => (
       The intelligent platform that connects teams, streamlines workflows, and amplifies your creative potential.
     </p>
     <div className="flex flex-col sm:flex-row gap-4 mt-8">
-      <Button size="lg" className="bg-red-500 hover:bg-red-500">
+      <Button size="lg" className="bg-red-500 hover:bg-red-500" onClick={() => window.location.href = '/sitemap'}>
         Get started free
       </Button>
       <Button size="lg" variant="outline">
@@ -304,10 +304,11 @@ const Hail9000LandingPage = () => {
             ))}
           </nav>
           <div className="flex items-center space-x-4">
-            <a href="/login" className="text-gray-600 hover:text-gray-900 hidden md:inline">
+          
+            <a href="/login" className="text-white hover:bg-red-600 bg-red-500 border border-red-500 px-3 py-1 rounded-sm">
               Sign in
             </a>
-            <Button>Get started</Button>
+    
             <button className="md:hidden">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="3" y1="12" x2="21" y2="12"></line>
