@@ -5,6 +5,8 @@ import LoginForm from './login';
 // import AuthGuard from './utils/auth-gaurd';
 import Hail9000LandingPage from './landing-page/landingpage';
 import Dashboard from './dashboard-component/dashboard';
+import NotFound from './404notFound';
+import Website from './webistePreview';
 
 
 
@@ -20,9 +22,9 @@ function App() {
         {/* <Route element={<AuthGuard />}> */}
         <Route path="/sitemap" element={<SitemapFlow />} />
         {/* </Route> */}
-        {/* <Route path="/website" element={<Website />} /> */}
+        <Route path="/website" element={<Website />} />
         {/* <Route path="/website-preview" element={<WebsitePreivewImg />} /> */}
-        <Route path="*" element={<div>Not Found</div>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     
   </div>

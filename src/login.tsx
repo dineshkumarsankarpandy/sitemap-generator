@@ -63,7 +63,8 @@ export default function LoginForm() {
 
       console.error("Login failed:", error.response?.data || error.message);
     } finally {
-      setIsLoading(false); // Stop loading indicator on button
+      setIsLoading(false); 
+      
     }
   };
 
@@ -82,7 +83,7 @@ export default function LoginForm() {
     <div className="relative flex min-h-screen">
       <Toaster position="top-center" reverseOrder={false} />
 
-      <div className="w-[45%] bg-gray-800">
+      <div className="w-[45%] bg-red-500">
       </div>
       <div className="flex items-center justify-center w-[55%] bg-gray-50">
         <Card className="w-full max-w-md">
@@ -122,7 +123,7 @@ export default function LoginForm() {
             <CardFooter className="flex flex-col space-y-2">
               <Button
                 type="submit"
-                className="w-full mt-8"
+                className="w-full mt-8 bg-red-600 hover:bg-red-400"
                 disabled={isLoading} // Disable button while loading
               >
                 {isLoading ? (
