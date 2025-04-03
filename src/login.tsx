@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import axios from "axios";
 import toast, { Toaster } from 'react-hot-toast'; // Import toast itself
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import Loader from "./utils/loader";
 
 export default function LoginForm() {
   const [mail, setEmail] = useState<string>("");
@@ -25,14 +25,14 @@ export default function LoginForm() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setPageLoading(false);
-    }, 1500); // Keep initial page load simulation if intended
+    }, 1500); 
 
     return () => clearTimeout(timer);
   }, []);
 
   const loginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true); // Start loading indicator on button
+    setIsLoading(true); 
 
     try {
       const response = await axios.post("http://localhost:8000/auth/login", {
@@ -40,9 +40,10 @@ export default function LoginForm() {
         password: password,
       });
 
+
       localStorage.setItem("access_token", response.data.access_token);
 
-      // Show success toast
+   
       toast.success("Login successful!", {
         duration: 8000, 
       });
@@ -55,10 +56,10 @@ export default function LoginForm() {
       navigate("/sitemap");
 
     } catch (error: any) {
-      // Show error toast
+    
       const errorMessage = error.response?.data?.detail || "Invalid email or password";
       toast.error(errorMessage, {
-        duration: 5000, // Display error for 5 seconds
+        duration: 5000, 
       });
 
       console.error("Login failed:", error.response?.data || error.message);
@@ -68,13 +69,10 @@ export default function LoginForm() {
     }
   };
 
-  if (pageLoading) {
+  if (isLoading) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-100 z-50">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-          <p className="mt-4 text-gray-700 font-medium">Loading...</p>
-        </div>
+      <div className="fixed inset-0 flex items-center justify-center  bg-opacity-50 z-50">
+        <Loader />
       </div>
     );
   }
@@ -124,16 +122,8 @@ export default function LoginForm() {
               <Button
                 type="submit"
                 className="w-full mt-8 bg-red-600 hover:bg-red-400"
-                disabled={isLoading} // Disable button while loading
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
                   "Sign In"
-                )}
               </Button>
               <p className="text-sm text-muted-foreground text-center">
                 Don't have an account?{" "}

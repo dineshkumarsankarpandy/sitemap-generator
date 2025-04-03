@@ -14,7 +14,6 @@ const StickyNoteNode = ({ id, data }: NodeProps<Node<StickyNoteData>>) => {
   const [color, setColor] = useState<string>(data.color ?? '#FFFF99');
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
-  // Static color options
   const colorOptions = [
     { name: 'Yellow', value: '#FFFF99' },
     { name: 'Pink', value: '#FFB6C1' },

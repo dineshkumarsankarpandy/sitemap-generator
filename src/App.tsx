@@ -5,9 +5,9 @@ import LoginForm from './login';
 // import AuthGuard from './utils/auth-gaurd';
 import Hail9000LandingPage from './landing-page/landingpage';
 import Dashboard from './dashboard-component/dashboard';
-import NotFound from './404notFound';
+import NotFound from './utils/404notFound';
 import Website from './webistePreview';
-
+import Loader from './utils/loader';
 
 
 function App() {
@@ -23,6 +23,7 @@ function App() {
         <Route path="/sitemap" element={<SitemapFlow />} />
         {/* </Route> */}
         <Route path="/website" element={<Website />} />
+        <Route path='/loader' element= {<Loader/>}/>
         {/* <Route path="/website-preview" element={<WebsitePreivewImg />} /> */}
         <Route path="*" element={<NotFound />} />
       </Routes>
