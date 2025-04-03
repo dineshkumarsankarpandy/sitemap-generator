@@ -67,7 +67,7 @@ export function PrimarySetupForm({ open, onOpenChange, onRegenerate, onSitemapGe
 
     try {
       const response = await axios.post(
-        'http://localhost:8000/sitemap_generator/sitemap-generator',
+        'http://localhost:8000/sitemap/generate',
         payload,
         {
           headers: {

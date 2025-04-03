@@ -12,13 +12,15 @@ import {
   NodeTypes,
   ReactFlowInstance,
   BackgroundVariant,
+  Panel
 } from '@xyflow/react';
 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import CustomNode from './customNode';
 
 import '@xyflow/react/dist/style.css';
-
+import { PrimarySetupForm } from './primarSetupForm';
+import { Sidebar } from './sidebar';
 
 const elk = new ELK();
 
@@ -32,7 +34,7 @@ interface Section {
 interface CustomNodeData extends Record<string, unknown> {
   label: string;
   sections: Section[];
-  onHeaderClick?: (nodeId: string, label: string) => void; // Still okay if needed for dialogs
+  onHeaderClick?: (nodeId: string, label: string) => void;
   // level: number;
 }
 
@@ -61,9 +63,9 @@ const nodeTypes: NodeTypes = {
   custom: CustomNode,
 };
 
-const NODE_WIDTH = 258;
-const NODE_HEADER_HEIGHT = 500;
-const SECTION_HEIGHT = 30;
+// const NODE_WIDTH = 258;
+// const NODE_HEADER_HEIGHT = 500;
+// const SECTION_HEIGHT = 30;
 const SITEMAP_STORAGE_KEY = 'sitemap_data';
 
 const initialNodes: Node[] = [
@@ -146,7 +148,7 @@ const loadInitialState = () => {
 
 // --- Main Component ---
 function SitemapFlow() {
-  const loadedState = useRef(loadInitialState());
+  // const loadedState = useRef(loadInitialState());
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -157,12 +159,12 @@ function SitemapFlow() {
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const [error, setError] = useState<string | null>(null);
-  const [isLayouting, setIsLayouting] = useState(false);
+  // const [isLayouting, setIsLayouting] = useState(false);
   const [primarySetupOpen, setPrimarySetupOpen] = useState<boolean>(false);
   const [projectBrief, setProjectBrief] = useState<any>({});
   const [imageUrl, setImageUrl] = useState('');
   const [fullResponse, setFullResponse] = useState<any>({});
-  const [showSitemap, setShowSitemap] = useState<boolean>(true);
+  // const [showSitemap, setShowSitemap] = useState<boolean>(true);
 
 
 
@@ -322,10 +324,9 @@ function SitemapFlow() {
   const handleSitemapGenerated = useCallback(
     (data: any) => {
       console.log('handleSitemapGenerated received data:', data);
-      const sitemapData = data[0];
-      const projectBriefData = data[1];
+      const sitemapData = data.sitemap;
+      const projectBriefData = data.project_brief;
 
-      // Validate input data
       if (!sitemapData || !sitemapData.Pages || !Array.isArray(sitemapData.Pages)) {
         console.error('Invalid sitemap data received', sitemapData);
         return;
@@ -336,12 +337,10 @@ function SitemapFlow() {
         return;
       }
 
-      // Update state with project brief and full response
       setProjectBrief(projectBriefData);
       setFullResponse(sitemapData);
       setImageUrl(data.imageUrl);
 
-      // Define homepage and child pages by extracting the first element as the homepage
       const homepage = sitemapData.Pages[0];
       const childPages = sitemapData.Pages.slice(1);
 
@@ -420,7 +419,6 @@ function SitemapFlow() {
   return (
     <>
      {/* <SitemapContext.Provider value={{ getNextPageNumber, triggerLayout, setPageCount }}>
-    
     </SitemapContext.Provider> */}
     <SitemapContext.Provider value={{ getNextPageNumber, setPageCount }}>
       <ReactFlowProvider>
@@ -438,10 +436,21 @@ function SitemapFlow() {
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             <MiniMap />
             <Controls />
+
+            <Panel position="bottom-center">
+                 <Sidebar onOpenDialog={handleOpenDialog}/>
+            </Panel>
           </ReactFlow>
         </div>
       </ReactFlowProvider>
       </SitemapContext.Provider>
+      <PrimarySetupForm
+        open={primarySetupOpen}
+        onOpenChange={setPrimarySetupOpen}
+        onRegenerate={handlePrimarySetupRegenerate}
+        nodeId="root"
+        onSitemapGenerated={handleSitemapGenerated}
+      />
     </>
   );
 }
