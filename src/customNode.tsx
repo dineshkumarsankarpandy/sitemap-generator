@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useRef, memo, useMemo } from 'react';
-import { Handle, Position, useReactFlow, Node, Edge, NodeProps } from '@xyflow/react';
+import { Handle, Position, useReactFlow, Node, Edge, NodeProps, useStore } from '@xyflow/react';
 import { useSitemapFunctions } from './sitemapFlow';
 // import type  AppNode  from './sitemapFlow';
 type AppNode = Node<any>;
@@ -41,11 +41,24 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
       if (id === 'root') return true;
       return !findParentEdge();
   }, [id, findParentEdge]);
-  const hasChildren = useMemo(() => getCurrentEdges().some(edge => edge.source === id), [getCurrentEdges, id]);
-  const canAddChild = true; // Allow adding children generally
+
+  const [hasChildren, setHasChildren] = useState(false);
+  const edges = useStore((store) => store.edges);
+
+  useEffect(() => {
+    const found = edges.some((edge) => edge.source === id);
+    setHasChildren(found);
+  }, [edges, id]);
+
+
+
+  useEffect(() => {
+    console.log(`Node ${id} has children?`, hasChildren);
+  }, [hasChildren]);
 
   // --- Node Actions ---
   const addChildNode = useCallback(() => {
+    console.log('inside add child node logic')
     const newNodeId = `node-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const newPageLabel = `Page ${getNextPageNumber()}`;
   
@@ -463,7 +476,20 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
       {/* Action Buttons for Nodes */}
       {!isRootNode() && (<button onClick={(e)=>{e.stopPropagation(); addSiblingNode('before');}} className="absolute -left-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-lg font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-cyan-400 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10" title="Add page before"> + </button>)}
       {!isRootNode() && (<button onClick={(e)=>{e.stopPropagation(); addSiblingNode('after');}} className="absolute -right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-lg font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-cyan-400 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10" title="Add page after"> + </button>)}
-      {canAddChild && (<button onClick={(e)=>{e.stopPropagation(); addChildNode();}} className="absolute -bottom-[13px] left-1/2 -translate-x-1/2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-lg font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-cyan-400 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10" title="Add child page"> + </button>)}
+      {/* {canAddChild && (<button onClick={(e)=>{e.stopPropagation(); addChildNode();}} className="absolute -bottom-[13px] left-1/2 -translate-x-1/2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-lg font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-cyan-400 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10" title="Add child page"> + </button>)} */}
+      {!hasChildren && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            addChildNode();
+          }}
+          className="absolute -bottom-[13px] left-1/2 -translate-x-1/2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-lg font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-cyan-400 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
+          title="Add child page"
+        >
+          +
+        </button>
+      )}
+
 
       {/* Outgoing Handle */}
       <Handle type="source" position={Position.Bottom} id={`${id}-source`} className="!h-3 !w-3 !rounded-full !bg-cyan-600 !-bottom-[7px] !border-2 !border-white !opacity-0 group-hover:!opacity-100 transition-opacity" isConnectable={false} />
