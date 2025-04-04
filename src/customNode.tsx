@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef, memo, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef, memo } from 'react';
 import { Handle, Position, useReactFlow, Node, Edge, NodeProps, useStore } from '@xyflow/react';
 import { useSitemapFunctions } from './sitemapFlow';
 // import type  AppNode  from './sitemapFlow';
@@ -12,7 +12,7 @@ interface Section {
 interface CustomNodeData extends Record<string, unknown> {
   label: string;
   sections: Section[];
-  level: number;
+  level?: number;
 }
 
 type CustomNodeType = Node<CustomNodeData, 'custom'>;

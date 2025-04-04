@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pencil, Download, StickyNote } from 'lucide-react'; 
+import { Pencil } from 'lucide-react'; 
 interface SidebarProps {
   onOpenDialog: () => void;
   // onDownloadImage: () => void;

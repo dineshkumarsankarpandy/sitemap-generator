@@ -12,7 +12,7 @@ const HeroSection = () => (
       The intelligent platform that connects teams, streamlines workflows, and amplifies your creative potential.
     </p>
     <div className="flex flex-col sm:flex-row gap-4 mt-8">
-      <Button size="lg" className="bg-red-500 hover:bg-red-500" onClick={() => window.location.href = '/sitemap'}>
+      <Button size="lg" className="bg-red-500 hover:bg-red-500" onClick={() => window.location.href = '/dashboard'}>
         Get started free
       </Button>
       <Button size="lg" variant="outline">

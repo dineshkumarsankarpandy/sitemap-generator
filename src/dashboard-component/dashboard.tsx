@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from "react";
 import ProjectList from "./projectList";
-import axios from "axios";
+import {AxiosError} from "axios";
 import { format } from "date-fns"
 import { Input } from "../components/ui/input";
 import { SearchIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { useNavigate } from "react-router-dom";
+import apiClient from "../services/api";
+
+
 
 
 interface ApiProject {
@@ -12,11 +16,15 @@ interface ApiProject {
   project_name: string;
   updated_at: string;
   created_at: string;
+  created_by: number | null;
+
 }
 
 interface ApiResponse {
   data: ApiProject[];
+  message?: string;
 }
+
 
 interface Project {
   id: string;
@@ -28,39 +36,64 @@ const Dashboard: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchProjects = async () => {
+     setLoading(true);
+      setError(null);
       try {
-        setLoading(true);
-        setError(null);
-
-        const response = await axios.get<ApiResponse>(
-          "http://localhost:8000/sitemap/get-projects"
+        const response = await apiClient.get<ApiResponse>(
+          "/projects/" 
         );
 
         const projectDetails: Project[] = response.data.data.map(
-          (apiProject) => ({
-            id: apiProject.id.toString(),
-            name: apiProject.project_name,
-            lastUpdated: format(new Date(apiProject.updated_at), "MMMM d, yyyy"),
+          (backendProject) => ({
+            id: backendProject.id.toString(),
+            name: backendProject.project_name,
+            lastUpdated: format(
+              new Date(backendProject.updated_at),
+              "MMMM d, yyyy"
+            ),
           })
         );
-
         setProjects(projectDetails);
       } catch (err) {
-        if (axios.isAxiosError(err)) {
-          setError(err.message || "Failed to fetch projects");
-        } else {
-          setError("An unexpected error occurred");
-        }
+        console.error("Error fetching projects:", err); 
+        const axiosError = err as AxiosError<{ detail?: string }>; 
+        const message = axiosError.response?.data?.detail || axiosError.message || "Failed to fetch projects";
+        setError(message);
       } finally {
         setLoading(false);
       }
     };
-
     fetchProjects();
-  }, []);
+  }, []); 
+
+
+  const handleCreateProject = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+
+      const response = await apiClient.post("/projects/create-project", {
+        project_name: "Untitled Project",
+        // created_by: userId,
+      });
+
+      const newProjectId = response.data.id;
+      
+      navigate(`/sitemap/${newProjectId}`);
+    } catch (err) {
+          const axiosError = err as AxiosError<{ detail?: string }>;
+          const message = axiosError.response?.data?.detail || axiosError.message || "Failed to create project";
+          setError(message);
+      
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -78,7 +111,9 @@ const Dashboard: React.FC = () => {
           />
         </div>
         
-        <Button className="bg-red-500 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors">
+        <Button
+        onClick={handleCreateProject}
+         className="bg-red-500 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors">
           Create new Project
         </Button>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,16 +19,16 @@ export default function LoginForm() {
   const [mail, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
+  // const [pageLoading, setPageLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setPageLoading(false);
-    }, 1500); 
+  // useEffect(() => {
+  //   const timer = setTimeout(() => {
+  //     setPageLoading(false);
+  //   }, 1500); 
 
-    return () => clearTimeout(timer);
-  }, []);
+  //   return () => clearTimeout(timer);
+  // }, []);
 
   const loginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +51,9 @@ export default function LoginForm() {
       console.log("Login successful:", response.data);
 
       setTimeout(() => {
-         navigate("/sitemap");
+         navigate("/dashboard");
       }, 5000); 
-      navigate("/sitemap");
+      navigate("/dashboard");
 
     } catch (error: any) {
     

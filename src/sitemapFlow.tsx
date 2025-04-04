@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect,useContext,createContext } from 'react';
+import { useState, useCallback, useRef, useEffect, useContext, createContext } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -21,9 +21,12 @@ import CustomNode from './customNode';
 import '@xyflow/react/dist/style.css';
 import { PrimarySetupForm } from './primarSetupForm';
 import { Sidebar } from './sidebar';
+import { useBlocker, useParams } from 'react-router-dom';
+import apiClient from './services/api';
+import EditableProjectName from './editablePojectName';
+
 
 const elk = new ELK();
-
 
 // --- Interfaces ---
 interface Section {
@@ -34,22 +37,19 @@ interface Section {
 interface CustomNodeData extends Record<string, unknown> {
   label: string;
   sections: Section[];
-  onHeaderClick?: (nodeId: string, label: string) => void;
-  // level: number;
+  level?: number;
 }
 
-type CustomNodeType = Node<CustomNodeData, 'custom'>;
 
-// --- Context Definition ---
+// type CustomNodeType = Node<CustomNodeData, 'custom'>;
+
 interface SitemapContextProps {
   getNextPageNumber: () => number;
   setPageCount: (count: number) => void;
 }
 
-
 // Create the context with a default undefined value
 const SitemapContext = createContext<SitemapContextProps | undefined>(undefined);
-
 
 // Custom hook to use the Sitemap context
 export const useSitemapFunctions = (): SitemapContextProps => {
@@ -63,24 +63,20 @@ const nodeTypes: NodeTypes = {
   custom: CustomNode,
 };
 
-// const NODE_WIDTH = 258;
-// const NODE_HEADER_HEIGHT = 500;
-// const SECTION_HEIGHT = 30;
 const SITEMAP_STORAGE_KEY = 'sitemap_data';
 
 const initialNodes: Node[] = [
   {
     id: 'root',
     type: 'custom',
-    data: { label: 'Home', sections: [], level: 0 },
+    data: { label: 'Home', sections: [] },
     position: { x: 0, y: 0 },
   },
 ];
 
 const initialEdges: Edge[] = [];
 
-
-// --- ELK Layout Function (Keep as before) ---
+// --- ELK Layout Function ---
 const getLayoutedElements = async (
   nodes: Node[],
   edges: Edge[]
@@ -98,7 +94,11 @@ const getLayoutedElements = async (
     children: nodes.map((node) => ({
       id: node.id,
       width: 260,
-      height: 400 + ((Array.isArray((node.data as any).sections) ? (node.data as any).sections.length : 1) * 30),
+      height:
+        400 +
+        (Array.isArray((node.data as any).sections)
+          ? (node.data as any).sections.length
+          : 1) * 30,
     })),
     edges: edges.map((edge) => ({
       id: edge.id,
@@ -114,8 +114,8 @@ const getLayoutedElements = async (
     return {
       ...node,
       position: {
-        x: (layoutNode?.x ?? 0),
-        y: (layoutNode?.y ?? 0),
+        x: layoutNode?.x ?? 0,
+        y: layoutNode?.y ?? 0,
       },
     };
   });
@@ -123,74 +123,52 @@ const getLayoutedElements = async (
   return { nodes: layoutedNodes, edges };
 };
 
- 
-
-// --- LocalStorage (Keep as before, ensure functions are NOT saved) ---
+// --- LocalStorage Helpers ---
 const loadInitialState = () => {
-  const savedData = localStorage.getItem('sitemap_data');
+  const savedData = localStorage.getItem(SITEMAP_STORAGE_KEY);
   if (savedData) {
     const { savedNodes, savedEdges, savedPageCount } = JSON.parse(savedData);
     if (savedNodes.length === 0) {
-      return {
-        nodes: initialNodes,
-        edges: initialEdges,
-        pageCount: 0 // Or 0, depending on your preference
-      };
+      return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
     }
     return { nodes: savedNodes, edges: savedEdges, pageCount: savedPageCount };
   }
-  return {
-    nodes: [{ id: 'root', type: 'custom', data: { label: 'Home' }, position: { x: 0, y: 0 } }],
-    edges: [],
-    pageCount: 0
-  };
+  return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
 };
+
+
+function useNavigationBlocker(when: boolean) {
+  const blocker = useBlocker(when);
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker]);
+}
 
 // --- Main Component ---
 function SitemapFlow() {
-  // const loadedState = useRef(loadInitialState());
-
+  const { projectId } = useParams<{ projectId: string }>();
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [pageCount, setPageCount] = useState(1);
-  // const [layoutTrigger, setLayoutTrigger] = useState(0);
-
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
-
   const [error, setError] = useState<string | null>(null);
-  // const [isLayouting, setIsLayouting] = useState(false);
   const [primarySetupOpen, setPrimarySetupOpen] = useState<boolean>(false);
   const [projectBrief, setProjectBrief] = useState<any>({});
   const [imageUrl, setImageUrl] = useState('');
   const [fullResponse, setFullResponse] = useState<any>({});
-  // const [showSitemap, setShowSitemap] = useState<boolean>(true);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  
+  
 
-
-
-  // --- Layout Trigger ---
-  //  const triggerLayout = useCallback(() => {
-  //   setLayoutTrigger((prev) => prev + 1);
-  // }, []);
-
-  // useEffect(() => {
-  //   if (layoutTrigger === 0) return;
-
-  //   let mounted = true;
-
-  //   getLayoutedElements(nodes, edges).then(({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-  //     if (mounted) {
-  //       setNodes(layoutedNodes);
-  //       reactFlowInstanceRef.current?.fitView({ padding: 0.3, duration: 500 });
-  //       setEdges(layoutedEdges);
-  //     }
-  //   });
-
-  //   return () => {
-  //     mounted = false;
-  //   };
-  // }, [layoutTrigger]);
-
+  // --- Layout Update ---
   useEffect(() => {
     const layoutAndUpdate = async () => {
       try {
@@ -202,9 +180,68 @@ function SitemapFlow() {
         console.error('Layout failed:', error);
       }
     };
-  
+
     layoutAndUpdate();
   }, [nodes.length, edges.length]);
+
+  // --- Save to Backend Function ---
+  const saveSitemapToBackend = useCallback(async () => {
+    setSaveStatus('saving');
+    try {
+      const sitemapData = {
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          data: { label: node.data.label, sections: node.data.sections, level: node.data.level },
+          position: node.position,
+        })),
+        edges,
+      };
+
+      const payload = {
+        project_name: projectBrief.business_name || 'Unnamed Project',
+        project_description: projectBrief.business_description || 'No description provided',
+        no_of_pages: pageCount,
+        sitemap_data: sitemapData || {},
+      };
+
+      const response = await apiClient.put(`/sitemap/save-sitemap/${projectId}`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Sitemap saved successfully:', response.data);
+      setSaveStatus('success');
+      setHasUnsavedChanges(false);
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Error saving sitemap to backend:', error);
+      setError('Failed to save sitemap to the server.');
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  }, [nodes, edges, projectBrief, pageCount]);
+
+  // --- Set Unsaved Changes Flag ---
+  useEffect(() => {
+    setHasUnsavedChanges(true);
+  }, [nodes, edges]);
+
+  // --- Warn on Browser Unload ---
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // --- Block In-App Navigation if Unsaved Changes ---
+  useNavigationBlocker(hasUnsavedChanges);
 
   const getNextPageNumber = () => {
     const next = pageCount + 1;
@@ -213,9 +250,8 @@ function SitemapFlow() {
   };
 
   const addNode = (position = 'end', referenceNodeId = 'root') => {
-    
     const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    
+
     const newNode: Node = {
       id: newId,
       type: 'custom',
@@ -238,10 +274,7 @@ function SitemapFlow() {
       const updated = [...nds, newNode];
       console.log('Updated node list:', updated);
       return updated;
-    }
-  );
-    console.log('Creating new node', newNode);
-    console.log('New node added:', newNode);
+    });
 
     setEdges((eds) => {
       if (position === 'end' || position === 'child' || !referenceNodeId) {
@@ -255,31 +288,21 @@ function SitemapFlow() {
         }
       }
     });
-
-    // triggerLayout();
   };
 
-  // --- LocalStorage Saving Effect (Keep as before) ---
+  // --- LocalStorage Saving Effect ---
   useEffect(() => {
     try {
-      // Filter out functions *if any accidentally remain* before saving
       const nodesToSave = nodes.map(node => {
         if (node.type === 'custom') {
           const { data, ...restNode } = node;
-          const {
-             // List any potential functions to exclude from saving
-             onHeaderClick, // Example if passed down
-             // getNextPageNumber, // No longer in data
-             // triggerLayout, // No longer in data
-             ...restData // Keep label, sections, level
-          } = data;
-          // Ensure required fields exist
+          const { onHeaderClick, ...restData } = data;
           restData.level = restData.level ?? 0;
           restData.sections = restData.sections ?? [];
           restData.label = restData.label ?? 'Untitled';
           return { ...restNode, data: restData };
         }
-        return node; // Keep sticky notes etc.
+        return node;
       });
 
       const dataToSave = {
@@ -293,25 +316,20 @@ function SitemapFlow() {
     }
   }, [nodes, edges, pageCount]);
 
-  // --- Other Actions (Keep as before) ---
-   const handleDeleteSitemap = useCallback(() => {
-        if (
-            confirm(
-                'Are you sure you want to delete the entire sitemap? This cannot be undone.',
-            )
-        ) {
-            setNodes([]);
-            setEdges([]);
-            setPageCount(0);
-            localStorage.removeItem(SITEMAP_STORAGE_KEY);
-            setError(null);
-        }
-    }, [setNodes, setEdges, setPageCount]);
+  // --- Other Actions ---
+  const handleDeleteSitemap = useCallback(() => {
+    if (confirm('Are you sure you want to delete the entire sitemap? This cannot be undone.')) {
+      setNodes([]);
+      setEdges([]);
+      setPageCount(0);
+      localStorage.removeItem(SITEMAP_STORAGE_KEY);
+      setError(null);
+    }
+  }, [setNodes, setEdges, setPageCount]);
 
   const handleOpenDialog = useCallback(() => {
     setPrimarySetupOpen(true);
   }, []);
-
 
   const handlePrimarySetupRegenerate = useCallback(
     (businessName: string, businessDescription: string, siteMapPrompt: string, noOfPage: number, language: string) => {
@@ -344,15 +362,13 @@ function SitemapFlow() {
       const homepage = sitemapData.Pages[0];
       const childPages = sitemapData.Pages.slice(1);
 
-      // Get current root node to preserve its position
       const currentRoot = nodes.find((node) => node.id === 'root');
       if (!currentRoot) {
         console.error('Root node not found');
         return;
       }
 
-      // Update root node with homepage details
-      const updatedRoot: Node<CustomNodeType['data'], string> = {
+      const updatedRoot: Node<CustomNodeData, string> = {
         ...currentRoot,
         data: {
           ...currentRoot.data,
@@ -366,17 +382,15 @@ function SitemapFlow() {
         },
       };
 
-      const HORIZONTAL_SPACING = 250; // Horizontal gap between child nodes
-      const VERTICAL_SPACING = 150;  // Vertical gap between root and children
-      const NODE_WIDTH = 250;        // Width of each node (assumed from CustomNode)
+      const HORIZONTAL_SPACING = 250;
+      const VERTICAL_SPACING = 150;
+      const NODE_WIDTH = 250;
 
-      // Calculate starting x position to center child nodes below root
       const numChildren = childPages.length;
       const totalWidth = (numChildren - 1) * HORIZONTAL_SPACING;
       const startX = updatedRoot.position.x - totalWidth / 2;
 
-      // Create child nodes for remaining pages
-      const newNodes: Node<CustomNodeType['data']>[] = childPages.map((page: any, index: any) => {
+      const newNodes: Node<CustomNodeData>[] = childPages.map((page: any, index: any) => {
         const newNodeId = `node-${Date.now()}-${index}`;
         const newPosition = {
           x: startX + index * HORIZONTAL_SPACING,
@@ -392,16 +406,13 @@ function SitemapFlow() {
               title: section.sectionName,
               description: section.section_description,
             })),
-          
             getNextPageNumber,
-            level: 1, // Direct children of root are level 1
-            subtreeWidth: NODE_WIDTH,
+            level: 1,
           },
           position: newPosition,
         };
       });
 
-      // Create edges connecting root to child nodes
       const newEdges: Edge[] = newNodes.map((node) => ({
         id: `edge-root-${node.id}`,
         source: 'root',
@@ -409,40 +420,76 @@ function SitemapFlow() {
         type: 'smoothstep',
       }));
 
-      // Update React Flow state with all nodes and edges
-      setNodes([updatedRoot as CustomNodeType, ...newNodes as CustomNodeType[]]);
+      setNodes([updatedRoot, ...newNodes]);
       setEdges(newEdges);
+      setHasUnsavedChanges(true);
     },
     [nodes, setNodes, setEdges, getNextPageNumber]
   );
 
+
+ 
   return (
     <>
-     {/* <SitemapContext.Provider value={{ getNextPageNumber, triggerLayout, setPageCount }}>
-    </SitemapContext.Provider> */}
-    <SitemapContext.Provider value={{ getNextPageNumber, setPageCount }}>
-      <ReactFlowProvider>
-        <div ref={reactFlowWrapper} className="w-full h-screen">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            nodesDraggable={false} // ⛔ Disable node dragging
-            onInit={(instance) => (reactFlowInstanceRef.current = instance)}
-            fitView
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <MiniMap />
-            <Controls />
+      <SitemapContext.Provider value={{ getNextPageNumber, setPageCount }}>
+        <ReactFlowProvider>
+          <div ref={reactFlowWrapper} className="w-full h-screen">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes}
+              nodesDraggable={false} // Disable node dragging
+              onInit={(instance) => (reactFlowInstanceRef.current = instance)}
+              fitView
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+              <MiniMap />
+              <Controls position="top-right" />
+              <Panel position="top-left" className="mt-4 mr-4 p-2 bg-white rounded shadow border border-gray-200 z-10"> {/* Added z-index */}
+                <EditableProjectName projectId={projectId} />
+              </Panel>
 
-            <Panel position="bottom-center">
-                 <Sidebar onOpenDialog={handleOpenDialog}/>
-            </Panel>
-          </ReactFlow>
-        </div>
-      </ReactFlowProvider>
+              <Panel position="bottom-left">
+                <Sidebar onOpenDialog={handleOpenDialog} />
+              </Panel>
+
+              {/* Save Status Panel */}
+              {saveStatus !== 'idle' && (
+                <Panel position="top-center">
+                  <div
+                    className={`px-4 py-2 rounded shadow text-sm ${
+                      saveStatus === 'saving'
+                        ? 'bg-blue-100 text-blue-800'
+                        : saveStatus === 'success'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {saveStatus === 'saving'
+                      ? 'Saving...'
+                      : saveStatus === 'success'
+                      ? 'Sitemap saved successfully!'
+                      : 'Failed to save sitemap.'}
+                  </div>
+                </Panel>
+              )}
+
+              {/* Save Changes Button Panel */}
+              <Panel position="bottom-right">
+                <button
+                  onClick={async () => {
+                    await saveSitemapToBackend();
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded shadow hover:bg-green-600"
+                >
+                  Save Changes
+                </button>
+              </Panel>
+            </ReactFlow>
+          </div>
+        </ReactFlowProvider>
       </SitemapContext.Provider>
       <PrimarySetupForm
         open={primarySetupOpen}
