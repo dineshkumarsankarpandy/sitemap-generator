@@ -150,6 +150,16 @@ function useNavigationBlocker(when: boolean) {
   }, [blocker]);
 }
 
+const isValidSitemapData = (data: any): boolean => {
+  return (
+    data &&
+    typeof data === 'object' &&
+    data.sitemap_data &&
+    Array.isArray(data.sitemap_data.nodes) &&
+    Array.isArray(data.sitemap_data.edges)
+  );
+};
+
 // --- Main Component ---
 function SitemapFlow() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -165,7 +175,110 @@ function SitemapFlow() {
   const [fullResponse, setFullResponse] = useState<any>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   
+  
+  useEffect(() => {
+    if (!projectId) {
+      console.log("Fetch aborted: Project ID is missing.");
+      setError("Project ID is missing.");
+      setNodes(initialNodes); 
+      setEdges(initialEdges);
+      setPageCount(1);
+      setProjectBrief({ business_name: 'New Project', business_description: '' });
+      setIsLoading(false);
+      setHasUnsavedChanges(false); 
+      return;
+    }
+
+    let isMounted = true;
+    console.log(`Fetching data for project ID: ${projectId}`);
+
+    const fetchProjectData = async () => {
+      setIsLoading(true);
+      setError(null);
+      setSaveStatus('idle');
+  
+
+      try {
+        const response = await apiClient.get(`/projects/${projectId}`);
+        if (!isMounted) return;
+
+        const projectData = response.data;
+        console.log('Fetched project data:', projectData);
+        const activeSitemap = projectData.active_sitemap;
+        const currentBrief = {
+          business_name: projectData.project_name || 'Unnamed Project',
+          business_description: activeSitemap?.project_description || '',
+        };
+        setProjectBrief(currentBrief);
+
+        if (activeSitemap && activeSitemap.sitemap_data && Array.isArray(activeSitemap.sitemap_data.nodes) && activeSitemap.sitemap_data.nodes.length > 0 && Array.isArray(activeSitemap.sitemap_data.edges)) {
+          console.log('Loading saved sitemap from backend:', activeSitemap.sitemap_data);
+
+          const loadedNodes = activeSitemap.sitemap_data.nodes.map((node: any) => ({
+            id: node.id,
+            type: node.type ?? 'custom',
+            position: node.position ?? { x: 0, y: 0 },
+            data: {
+              label: node.data?.label ?? 'Untitled',
+              sections: node.data?.sections ?? [],
+              level: node.data?.level ?? 0,
+            },
+            width: node.width,
+            height: node.height,
+            ...node, 
+          }));
+
+          const loadedEdges = activeSitemap.sitemap_data.edges.map((edge: any) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            type: edge.type ?? 'smoothstep',
+            ...edge, 
+          }));
+
+          setNodes(loadedNodes);
+          setEdges(loadedEdges);
+          setPageCount(activeSitemap.no_of_pages || loadedNodes.length); // Use saved count or calculate
+          console.log(`Loaded ${loadedNodes.length} nodes and ${loadedEdges.length} edges.`);
+
+        } else {
+          console.log('No valid sitemap data found, using initial state.');
+          setNodes(initialNodes);
+          setEdges(initialEdges);
+          setPageCount(initialNodes.length);
+        }
+        setHasUnsavedChanges(false);
+
+      } catch (err: any) {
+        if (!isMounted) return;
+        console.error('Error fetching project data:', err);
+        let errorMsg = 'Failed to load project data.';
+        if (err.response?.status === 404) errorMsg = `Project with ID ${projectId} not found.`;
+        if (err.response?.status === 403) errorMsg = "Permission denied to access this project.";
+        setError(errorMsg);
+        setProjectBrief({ business_name: 'Error Loading', business_description: '' });
+        setNodes(initialNodes);
+        setEdges(initialEdges);
+        setPageCount(initialNodes.length);
+        setHasUnsavedChanges(false); 
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          console.log("Loading finished.");
+        }
+      }
+    };
+
+    fetchProjectData();
+
+    return () => {
+      isMounted = false;
+      console.log("SitemapFlow cleanup.");
+    };
+  }, [projectId]);
+
   
 
   // --- Layout Update ---
@@ -183,6 +296,8 @@ function SitemapFlow() {
 
     layoutAndUpdate();
   }, [nodes.length, edges.length]);
+
+
 
   // --- Save to Backend Function ---
   const saveSitemapToBackend = useCallback(async () => {
