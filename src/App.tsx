@@ -26,7 +26,7 @@ const router = createBrowserRouter([
     element: <SitemapFlow />,
   },
   {
-    path: "/website",
+    path: "/website/:projectId",
     element: <Website />,
   },
   {

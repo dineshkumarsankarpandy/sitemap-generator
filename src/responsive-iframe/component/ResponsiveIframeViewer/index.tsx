@@ -15,7 +15,7 @@ import {
 
 interface ResponsiveIframeViewerProps
   extends React.HTMLAttributes<HTMLDivElement> {
-  src: string;
+  srcDoc: string;
   title: string;
   width?: number;
   height?: number;

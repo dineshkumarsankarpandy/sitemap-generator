@@ -17,16 +17,16 @@ import {
 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import CustomNode from './customNode';
-
 import '@xyflow/react/dist/style.css';
 import { PrimarySetupForm } from './primarSetupForm';
 import { Sidebar } from './sidebar';
 import { useBlocker, useParams } from 'react-router-dom';
 import apiClient from './services/api';
 import EditableProjectName from './editablePojectName';
-
+import Navbar from './navigation';
 
 const elk = new ELK();
+
 
 // --- Interfaces ---
 interface Section {
@@ -124,17 +124,17 @@ const getLayoutedElements = async (
 };
 
 // --- LocalStorage Helpers ---
-const loadInitialState = () => {
-  const savedData = localStorage.getItem(SITEMAP_STORAGE_KEY);
-  if (savedData) {
-    const { savedNodes, savedEdges, savedPageCount } = JSON.parse(savedData);
-    if (savedNodes.length === 0) {
-      return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
-    }
-    return { nodes: savedNodes, edges: savedEdges, pageCount: savedPageCount };
-  }
-  return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
-};
+// const loadInitialState = () => {
+//   const savedData = localStorage.getItem(SITEMAP_STORAGE_KEY);
+//   if (savedData) {
+//     const { savedNodes, savedEdges, savedPageCount } = JSON.parse(savedData);
+//     if (savedNodes.length === 0) {
+//       return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
+//     }
+//     return { nodes: savedNodes, edges: savedEdges, pageCount: savedPageCount };
+//   }
+//   return { nodes: initialNodes, edges: initialEdges, pageCount: 0 };
+// };
 
 
 function useNavigationBlocker(when: boolean) {
@@ -150,15 +150,6 @@ function useNavigationBlocker(when: boolean) {
   }, [blocker]);
 }
 
-const isValidSitemapData = (data: any): boolean => {
-  return (
-    data &&
-    typeof data === 'object' &&
-    data.sitemap_data &&
-    Array.isArray(data.sitemap_data.nodes) &&
-    Array.isArray(data.sitemap_data.edges)
-  );
-};
 
 // --- Main Component ---
 function SitemapFlow() {
@@ -180,7 +171,7 @@ function SitemapFlow() {
   
   useEffect(() => {
     if (!projectId) {
-      console.log("Fetch aborted: Project ID is missing.");
+      // console.log("Fetch aborted: Project ID is missing.");
       setError("Project ID is missing.");
       setNodes(initialNodes); 
       setEdges(initialEdges);
@@ -192,7 +183,7 @@ function SitemapFlow() {
     }
 
     let isMounted = true;
-    console.log(`Fetching data for project ID: ${projectId}`);
+    // console.log(`Fetching data for project ID: ${projectId}`);
 
     const fetchProjectData = async () => {
       setIsLoading(true);
@@ -205,7 +196,7 @@ function SitemapFlow() {
         if (!isMounted) return;
 
         const projectData = response.data;
-        console.log('Fetched project data:', projectData);
+        // console.log('Fetched project data:', projectData);
         const activeSitemap = projectData.active_sitemap;
         const currentBrief = {
           business_name: projectData.project_name || 'Unnamed Project',
@@ -241,10 +232,10 @@ function SitemapFlow() {
           setNodes(loadedNodes);
           setEdges(loadedEdges);
           setPageCount(activeSitemap.no_of_pages || loadedNodes.length); // Use saved count or calculate
-          console.log(`Loaded ${loadedNodes.length} nodes and ${loadedEdges.length} edges.`);
+          // console.log(`Loaded ${loadedNodes.length} nodes and ${loadedEdges.length} edges.`);
 
         } else {
-          console.log('No valid sitemap data found, using initial state.');
+          // console.log('No valid sitemap data found, using initial state.');
           setNodes(initialNodes);
           setEdges(initialEdges);
           setPageCount(initialNodes.length);
@@ -407,29 +398,40 @@ function SitemapFlow() {
 
   // --- LocalStorage Saving Effect ---
   useEffect(() => {
+    if (isLoading || !projectId) {
+        return;
+    }
     try {
       const nodesToSave = nodes.map(node => {
         if (node.type === 'custom') {
-          const { data, ...restNode } = node;
-          const { onHeaderClick, ...restData } = data;
-          restData.level = restData.level ?? 0;
-          restData.sections = restData.sections ?? [];
-          restData.label = restData.label ?? 'Untitled';
-          return { ...restNode, data: restData };
+          const { onHeaderClick, getNextPageNumber, ...restData } = node.data || {};
+          const cleanedData = {
+            label: restData.label ?? 'Untitled',
+            sections: restData.sections ?? [],
+            level: restData.level ?? 0,
+          };
+          return { ...node, data: cleanedData };
         }
         return node;
       });
-
+  
       const dataToSave = {
         savedNodes: nodesToSave,
         savedEdges: edges,
         savedPageCount: pageCount,
+        projectBrief: projectBrief,
+        // fullResponse: fullResponse,
       };
       localStorage.setItem(SITEMAP_STORAGE_KEY, JSON.stringify(dataToSave));
+      console.log('Sitemap data saved to localStorage:', dataToSave); 
+  
     } catch (error) {
       console.error('Error saving sitemap to localStorage:', error);
     }
-  }, [nodes, edges, pageCount]);
+  }, [nodes, edges, pageCount, projectBrief, isLoading, projectId]);
+
+
+
 
   // --- Other Actions ---
   const handleDeleteSitemap = useCallback(() => {
@@ -546,6 +548,7 @@ function SitemapFlow() {
  
   return (
     <>
+    
       <SitemapContext.Provider value={{ getNextPageNumber, setPageCount }}>
         <ReactFlowProvider>
           <div ref={reactFlowWrapper} className="w-full h-screen">
@@ -562,7 +565,10 @@ function SitemapFlow() {
               <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
               <MiniMap />
               <Controls position="top-right" />
-              <Panel position="top-left" className="mt-4 mr-4 p-2 bg-white rounded shadow border border-gray-200 z-10"> {/* Added z-index */}
+              <Panel position="top-center" className="mt-4 mr-4 p-2 border">
+                <Navbar projectId={projectId} />
+              </Panel>
+s              <Panel position="top-left" className="mt-4 mr-4 p-2 bg-white rounded shadow border border-gray-200 z-10"> 
                 <EditableProjectName projectId={projectId} />
               </Panel>
 

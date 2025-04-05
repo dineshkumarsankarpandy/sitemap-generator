@@ -466,9 +466,9 @@ function CustomNodeComponent({ id, data, selected }: NodeProps<CustomNodeType>) 
               <span className="text-sm">+</span> Section
             </button>
             {/* Keep Generate Content button if needed */}
-             {/* <button className="flex items-center gap-1 px-2 py-1 text-xs text-purple-600 bg-purple-50 rounded hover:bg-purple-100">
+             <button className="flex items-center gap-1 px-2 py-1 text-xs text-purple-600 bg-purple-50 rounded hover:bg-purple-100">
                <span className="text-sm">✨</span> Generate content
-             </button> */}
+             </button>
           </div>
         )}
       </div>
